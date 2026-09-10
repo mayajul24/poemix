@@ -17,6 +17,9 @@
 
 * {
   box-sizing: border-box;
+  /* mobile browsers flash a default gray/blue overlay on tap otherwise,
+     which reads as strips flickering during drag */
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
