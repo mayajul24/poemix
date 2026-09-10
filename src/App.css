@@ -247,7 +247,6 @@
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
   transform-origin: center;
   scale: 1.05;
-  animation: none;
 }
 
 .strip--glued {
