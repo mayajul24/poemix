@@ -7,10 +7,12 @@ import './App.css';
 export default function App() {
   const [rawText, setRawText] = useState<string | null>(null);
   const [pieces, setPieces] = useState<Piece[]>([]);
+  const [draftText, setDraftText] = useState('');
 
   if (rawText === null) {
     return (
       <InputScreen
+        initialText={draftText}
         onSubmit={(text) => {
           setRawText(text);
           setPieces(generatePieces(text));
@@ -23,7 +25,15 @@ export default function App() {
     <CutupBoard
       key={pieces.map((p) => p.id).join('|')}
       initialPieces={pieces}
-      onNewText={() => setRawText(null)}
+      originalText={rawText}
+      onNewText={() => {
+        setDraftText('');
+        setRawText(null);
+      }}
+      onEditOriginal={() => {
+        setDraftText(rawText);
+        setRawText(null);
+      }}
       onReshuffle={() => setPieces(generatePieces(rawText))}
     />
   );

@@ -1,40 +1,117 @@
 import { useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
-import { makePieceId, splitWords, type Piece } from '../lib/cutup';
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
+import { makePieceId, readingOrderText, splitWords, type Piece } from '../lib/cutup';
+import { downloadBlob, downloadText, renderPiecesToPngBlob } from '../lib/exportImage';
 import { Strip } from './Strip';
-
-interface PoemItem {
-  id: string;
-  text: string;
-}
 
 interface CutupBoardProps {
   initialPieces: Piece[];
+  originalText: string;
   onNewText: () => void;
+  onEditOriginal: () => void;
   onReshuffle: () => void;
 }
 
 const TAP_THRESHOLD = 8; // px of movement below which a pointer gesture counts as a tap, not a drag
+const MERGE_THRESHOLD = 22; // px gap below which a dropped piece glues to its neighbor
+const BG_PRESETS = ['#3a2e26', '#1f3a2e', '#1f2a3a', '#3a1f2e', '#2a2a2a', '#3a3524'];
+const BG_STORAGE_KEY = 'poemix-bg-color';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function isPointInRect(x: number, y: number, rect: DOMRect | null): boolean {
-  if (!rect) return false;
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+/** 0 if the two rects touch or overlap, otherwise the gap between them. */
+function rectDistance(a: DOMRect, b: DOMRect): number {
+  const dx = Math.max(b.left - a.right, a.left - b.right, 0);
+  const dy = Math.max(b.top - a.bottom, a.top - b.bottom, 0);
+  return Math.hypot(dx, dy);
 }
 
-export function CutupBoard({ initialPieces, onNewText, onReshuffle }: CutupBoardProps) {
+function loadBgColor(): string {
+  try {
+    return localStorage.getItem(BG_STORAGE_KEY) || BG_PRESETS[0];
+  } catch {
+    return BG_PRESETS[0];
+  }
+}
+
+export function CutupBoard({
+  initialPieces,
+  originalText,
+  onNewText,
+  onEditOriginal,
+  onReshuffle,
+}: CutupBoardProps) {
   const [tablePieces, setTablePieces] = useState<Piece[]>(initialPieces);
-  const [poem, setPoem] = useState<PoemItem[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [cuttingId, setCuttingId] = useState<string | null>(null);
+  const [gluedId, setGluedId] = useState<string | null>(null);
+  const [bgColor, setBgColorState] = useState<string>(loadBgColor);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const tableRef = useRef<HTMLDivElement>(null);
-  const poemListRef = useRef<HTMLDivElement>(null);
-  const poemPanelRef = useRef<HTMLDivElement>(null);
+
+  const setBgColor = (color: string) => {
+    setBgColorState(color);
+    try {
+      localStorage.setItem(BG_STORAGE_KEY, color);
+    } catch {
+      // private mode / storage disabled - the color just won't persist
+    }
+  };
+
+  const mergePieces = (idA: string, idB: string, rectA: DOMRect, rectB: DOMRect) => {
+    const mergedId = makePieceId();
+    setTablePieces((prev) => {
+      const a = prev.find((p) => p.id === idA);
+      const b = prev.find((p) => p.id === idB);
+      const tableRect = tableRef.current?.getBoundingClientRect();
+      if (!a || !b || !tableRect) return prev;
+
+      const centerAX = rectA.left + rectA.width / 2;
+      const centerAY = rectA.top + rectA.height / 2;
+      const centerBX = rectB.left + rectB.width / 2;
+      const centerBY = rectB.top + rectB.height / 2;
+      const dx = centerAX - centerBX;
+      const dy = centerAY - centerBY;
+
+      // side by side -> reading right-to-left, rightmost piece comes first;
+      // stacked -> the higher piece comes first
+      const sideBySide = Math.abs(dx) >= Math.abs(dy);
+      const aFirst = sideBySide ? dx > 0 : dy < 0;
+      const text = aFirst ? `${a.text} ${b.text}` : `${b.text} ${a.text}`;
+
+      // keep the (now wider) merged piece from hanging off the table edge, where
+      // it would get clipped by the table's overflow:hidden
+      const estWidthPx = sideBySide
+        ? rectA.width + rectB.width + 16
+        : Math.max(rectA.width, rectB.width);
+      const halfWidthPct = (estWidthPx / 2 / tableRect.width) * 100;
+      const minX = Math.min(48, 4 + halfWidthPct);
+      const maxX = Math.max(52, 96 - halfWidthPct);
+
+      const midX = clamp(
+        ((centerAX + centerBX) / 2 - tableRect.left) / tableRect.width * 100,
+        minX,
+        maxX,
+      );
+      const midY = clamp(
+        ((centerAY + centerBY) / 2 - tableRect.top) / tableRect.height * 100,
+        6,
+        94,
+      );
+
+      const merged: Piece = { id: mergedId, text, x: midX, y: midY, rot: 0 };
+      return [...prev.filter((p) => p.id !== idA && p.id !== idB), merged];
+    });
+
+    setGluedId(mergedId);
+    setTimeout(() => setGluedId((cur) => (cur === mergedId ? null : cur)), 500);
+  };
 
   const startTableDrag = (piece: Piece) => (e: ReactPointerEvent) => {
     const target = e.currentTarget as HTMLElement;
@@ -47,7 +124,6 @@ export function CutupBoard({ initialPieces, onNewText, onReshuffle }: CutupBoard
     if (cuttingId && cuttingId !== piece.id) setCuttingId(null);
 
     const tableRect = tableRef.current?.getBoundingClientRect() ?? null;
-    const poemRect = poemPanelRef.current?.getBoundingClientRect() ?? null;
     if (!tableRect) return;
 
     const startClientX = e.clientX;
@@ -75,73 +151,23 @@ export function CutupBoard({ initialPieces, onNewText, onReshuffle }: CutupBoard
         return;
       }
 
-      if (isPointInRect(ev.clientX, ev.clientY, poemRect)) {
-        setTablePieces((prev) => prev.filter((p) => p.id !== piece.id));
-        setPoem((prev) => [...prev, { id: piece.id, text: piece.text }]);
-      }
-    };
+      if (!tableRef.current) return;
+      const draggedRect = target.getBoundingClientRect();
+      const others = Array.from(
+        tableRef.current.querySelectorAll<HTMLElement>('[data-piece-id]'),
+      ).filter((el) => el.dataset.pieceId !== piece.id);
 
-    window.addEventListener('pointermove', handleMove);
-    window.addEventListener('pointerup', handleUp);
-  };
-
-  const startPoemDrag = (item: PoemItem) => (e: ReactPointerEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    try {
-      target.setPointerCapture(e.pointerId);
-    } catch {
-      // capture is a nice-to-have; the window-level listeners below still drive the drag
-    }
-
-    if (cuttingId && cuttingId !== item.id) setCuttingId(null);
-
-    const poemRect = poemPanelRef.current?.getBoundingClientRect() ?? null;
-    const tableRect = tableRef.current?.getBoundingClientRect() ?? null;
-    const startClientX = e.clientX;
-    const startClientY = e.clientY;
-    setDraggingId(item.id);
-
-    const handleMove = (ev: PointerEvent) => {
-      if (!poemListRef.current) return;
-      const rows = Array.from(
-        poemListRef.current.querySelectorAll<HTMLElement>('[data-piece-id]'),
-      );
-      const others = rows.filter((r) => r.dataset.pieceId !== item.id);
-      let idx = 0;
-      for (const r of others) {
-        const rect = r.getBoundingClientRect();
-        const mid = rect.top + rect.height / 2;
-        if (ev.clientY > mid) idx++;
-      }
-      setPoem((prev) => {
-        const dragged = prev.find((p) => p.id === item.id);
-        if (!dragged) return prev;
-        const rest = prev.filter((p) => p.id !== item.id);
-        rest.splice(idx, 0, dragged);
-        return rest;
-      });
-    };
-
-    const handleUp = (ev: PointerEvent) => {
-      window.removeEventListener('pointermove', handleMove);
-      window.removeEventListener('pointerup', handleUp);
-      setDraggingId(null);
-
-      const moved = Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY);
-      if (moved < TAP_THRESHOLD) {
-        if (splitWords(item.text).length > 1) setCuttingId(item.id);
-        return;
+      let closest: { id: string; rect: DOMRect; dist: number } | null = null;
+      for (const el of others) {
+        const rect = el.getBoundingClientRect();
+        const dist = rectDistance(draggedRect, rect);
+        if (dist <= MERGE_THRESHOLD && (!closest || dist < closest.dist)) {
+          closest = { id: el.dataset.pieceId as string, rect, dist };
+        }
       }
 
-      const stillInPoem = isPointInRect(ev.clientX, ev.clientY, poemRect);
-      if (!stillInPoem && tableRect) {
-        setPoem((prev) => prev.filter((p) => p.id !== item.id));
-        const nx = clamp(((ev.clientX - tableRect.left) / tableRect.width) * 100, 2, 98);
-        const ny = clamp(((ev.clientY - tableRect.top) / tableRect.height) * 100, 2, 98);
-        setTablePieces((prev) => [
-          ...prev,
-          { id: item.id, text: item.text, x: nx, y: ny, rot: (Math.random() - 0.5) * 24 },
-        ]);
+      if (closest) {
+        mergePieces(piece.id, closest.id, draggedRect, closest.rect);
       }
     };
 
@@ -176,37 +202,10 @@ export function CutupBoard({ initialPieces, onNewText, onReshuffle }: CutupBoard
     setCuttingId(null);
   };
 
-  const cutPoemPiece = (id: string, splitIndex: number) => {
-    setPoem((prev) => {
-      const idx = prev.findIndex((p) => p.id === id);
-      if (idx === -1) return prev;
-      const words = splitWords(prev[idx].text);
-      const next = [...prev];
-      next.splice(
-        idx,
-        1,
-        { id: makePieceId(), text: words.slice(0, splitIndex).join(' ') },
-        { id: makePieceId(), text: words.slice(splitIndex).join(' ') },
-      );
-      return next;
-    });
-    setCuttingId(null);
-  };
-
-  const removeFromPoem = (id: string) => {
-    const item = poem.find((p) => p.id === id);
-    if (!item || !tableRef.current) return;
-    setPoem((prev) => prev.filter((p) => p.id !== id));
-    setTablePieces((prev) => [
-      ...prev,
-      { id: item.id, text: item.text, x: 50 + (Math.random() - 0.5) * 20, y: 12, rot: (Math.random() - 0.5) * 24 },
-    ]);
-  };
-
-  const copyPoem = async () => {
-    const textOut = poem.map((p) => p.text).join('\n');
+  const handleCopyText = async () => {
+    const text = readingOrderText(tablePieces);
     try {
-      await navigator.clipboard.writeText(textOut);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -214,8 +213,30 @@ export function CutupBoard({ initialPieces, onNewText, onReshuffle }: CutupBoard
     }
   };
 
+  const handleDownloadText = () => {
+    downloadText(readingOrderText(tablePieces), 'שיר.txt');
+    setShowSaveMenu(false);
+  };
+
+  const handleDownloadImage = async () => {
+    if (!tableRef.current) return;
+    const rect = tableRef.current.getBoundingClientRect();
+    const blob = await renderPiecesToPngBlob(tablePieces, {
+      bgColor,
+      width: rect.width,
+      height: rect.height,
+    });
+    downloadBlob(blob, 'שיר.png');
+    setShowSaveMenu(false);
+  };
+
+  const closePopovers = () => {
+    setShowColorPicker(false);
+    setShowSaveMenu(false);
+  };
+
   return (
-    <div className="screen board-screen">
+    <div className="screen board-screen" style={{ '--wood-light': bgColor } as CSSProperties}>
       <header className="board-header">
         <button type="button" className="btn btn--ghost btn--small" onClick={onNewText}>
           טקסט חדש
@@ -223,23 +244,102 @@ export function CutupBoard({ initialPieces, onNewText, onReshuffle }: CutupBoard
         <button type="button" className="btn btn--ghost btn--small" onClick={onReshuffle}>
           גזירה מחדש
         </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--icon"
+          aria-label="הטקסט המקורי"
+          onClick={() => {
+            closePopovers();
+            setShowOriginal(true);
+          }}
+        >
+          📄
+        </button>
+        <div className="popover-anchor">
+          <button
+            type="button"
+            className="btn btn--ghost btn--icon"
+            aria-label="צבע רקע"
+            onClick={() => {
+              setShowSaveMenu(false);
+              setShowColorPicker((v) => !v);
+            }}
+          >
+            🎨
+          </button>
+          {showColorPicker && (
+            <div className="popover color-popover">
+              {BG_PRESETS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="swatch"
+                  style={{ background: c }}
+                  aria-label={c}
+                  onClick={() => {
+                    setBgColor(c);
+                    setShowColorPicker(false);
+                  }}
+                />
+              ))}
+              <label className="swatch swatch--custom">
+                🎨
+                <input
+                  type="color"
+                  value={bgColor}
+                  onChange={(e) => setBgColor(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
+        </div>
+        <div className="popover-anchor">
+          <button
+            type="button"
+            className="btn btn--ghost btn--icon"
+            aria-label="שמירה"
+            onClick={() => {
+              setShowColorPicker(false);
+              setShowSaveMenu((v) => !v);
+            }}
+          >
+            💾
+          </button>
+          {showSaveMenu && (
+            <div className="popover save-popover">
+              <button type="button" onClick={handleCopyText}>
+                {copied ? 'הועתק ✓' : 'העתיקי טקסט'}
+              </button>
+              <button type="button" onClick={handleDownloadText}>
+                הורידי כטקסט
+              </button>
+              <button type="button" onClick={handleDownloadImage}>
+                הורידי כתמונה
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <div
         className="table"
         ref={tableRef}
         onClick={(e) => {
-          if (e.target === e.currentTarget && cuttingId) setCuttingId(null);
+          if (e.target === e.currentTarget) {
+            if (cuttingId) setCuttingId(null);
+            closePopovers();
+          }
         }}
       >
         {tablePieces.length === 0 && (
-          <p className="table-hint">כל השורות על השולחן... הן ב&quot;שיר שלי&quot; למטה</p>
+          <p className="table-hint">כל השורות נגזרו... לחצי &quot;גזירה מחדש&quot; כדי לפזר שוב</p>
         )}
-        {tablePieces.map((piece) => {
+        {tablePieces.map((piece, i) => {
           const isCutting = cuttingId === piece.id;
           return (
             <Strip
               key={piece.id}
+              pieceId={piece.id}
               text={piece.text}
               dragging={draggingId === piece.id}
               cutting={isCutting}
@@ -247,71 +347,45 @@ export function CutupBoard({ initialPieces, onNewText, onReshuffle }: CutupBoard
               onCut={(splitIndex) => cutTablePiece(piece.id, splitIndex)}
               onCancelCut={() => setCuttingId(null)}
               onPointerDown={isCutting ? undefined : startTableDrag(piece)}
+              className={gluedId === piece.id ? 'strip--glued' : ''}
               style={{
                 position: 'absolute',
                 left: isCutting ? '50%' : `${piece.x}%`,
                 top: isCutting ? '46%' : `${piece.y}%`,
                 transform: `translate(-50%, -50%) rotate(${isCutting ? 0 : piece.rot}deg)`,
-                zIndex: draggingId === piece.id || isCutting ? 50 : 1,
+                zIndex: draggingId === piece.id || isCutting || gluedId === piece.id ? 50 : 1,
+                animationDelay: `${Math.min(i, 20) * 25}ms`,
               }}
             />
           );
         })}
       </div>
 
-      <div
-        className="poem-panel"
-        ref={poemPanelRef}
-        onClick={(e) => {
-          if (e.target === e.currentTarget && cuttingId) setCuttingId(null);
-        }}
-      >
-        <div className="poem-panel-head">
-          <h2>השיר שלי</h2>
-          <button
-            type="button"
-            className="btn btn--ghost btn--small"
-            disabled={poem.length === 0}
-            onClick={copyPoem}
-          >
-            {copied ? 'הועתק ✓' : 'העתיקי שיר'}
-          </button>
-        </div>
-        <div className="poem-list" ref={poemListRef}>
-          {poem.length === 0 && (
-            <p className="poem-hint">גררי לכאן שורות מהשולחן כדי לבנות שיר</p>
-          )}
-          {poem.map((item) => {
-            const isCutting = cuttingId === item.id;
-            return (
-              <div
-                key={item.id}
-                data-piece-id={item.id}
-                className={`poem-row ${draggingId === item.id ? 'poem-row--dragging' : ''}`}
+      {showOriginal && (
+        <div className="modal-overlay" onClick={() => setShowOriginal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>הטקסט המקורי</h2>
+              <button
+                type="button"
+                className="modal-close"
+                aria-label="סגירה"
+                onClick={() => setShowOriginal(false)}
               >
-                <Strip
-                  text={item.text}
-                  dragging={draggingId === item.id}
-                  cutting={isCutting}
-                  words={isCutting ? splitWords(item.text) : undefined}
-                  onCut={(splitIndex) => cutPoemPiece(item.id, splitIndex)}
-                  onCancelCut={() => setCuttingId(null)}
-                  onPointerDown={isCutting ? undefined : startPoemDrag(item)}
-                  className="poem-strip"
-                />
-                <button
-                  type="button"
-                  className="poem-remove"
-                  aria-label="הסירי שורה"
-                  onClick={() => removeFromPoem(item.id)}
-                >
-                  ×
-                </button>
-              </div>
-            );
-          })}
+                ×
+              </button>
+            </div>
+            <pre className="modal-text" dir="auto">
+              {originalText}
+            </pre>
+            <div className="modal-actions">
+              <button type="button" className="btn btn--ghost btn--small" onClick={onEditOriginal}>
+                ערכי טקסט
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

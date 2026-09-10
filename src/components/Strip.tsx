@@ -10,6 +10,7 @@ interface StripProps {
   words?: string[];
   onCut?: (splitIndex: number) => void;
   onCancelCut?: () => void;
+  pieceId?: string;
 }
 
 export function Strip({
@@ -22,10 +23,11 @@ export function Strip({
   words,
   onCut,
   onCancelCut,
+  pieceId,
 }: StripProps) {
   if (cutting && words) {
     return (
-      <div className={`strip strip--cutting ${className}`} style={style}>
+      <div className={`strip strip--cutting ${className}`} style={style} data-piece-id={pieceId}>
         <div className="cut-words" dir="auto">
           {words.map((word, i) => (
             <span className="cut-word-group" key={i}>
@@ -60,6 +62,7 @@ export function Strip({
       className={`strip ${dragging ? 'strip--dragging' : ''} ${className}`}
       style={style}
       onPointerDown={onPointerDown}
+      data-piece-id={pieceId}
     >
       <span dir="auto">{text}</span>
     </div>

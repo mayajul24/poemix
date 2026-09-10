@@ -2,11 +2,12 @@ import { useRef, useState } from 'react';
 import { extractTextFromFile } from '../lib/docx';
 
 interface InputScreenProps {
+  initialText?: string;
   onSubmit: (text: string) => void;
 }
 
-export function InputScreen({ onSubmit }: InputScreenProps) {
-  const [text, setText] = useState('');
+export function InputScreen({ initialText = '', onSubmit }: InputScreenProps) {
+  const [text, setText] = useState(initialText);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -26,7 +27,6 @@ export function InputScreen({ onSubmit }: InputScreenProps) {
 
   return (
     <div className="screen input-screen">
-      <h1>גזירה</h1>
       <p className="subtitle">כתבי טקסט חופשי, גזרי אותו לשורות, ובני משיר מהגזירים</p>
 
       <textarea
@@ -69,7 +69,7 @@ export function InputScreen({ onSubmit }: InputScreenProps) {
         disabled={!canSubmit}
         onClick={() => onSubmit(text)}
       >
-        גזרי לשורות ✂️
+        לגזור לשורות ✂️
       </button>
     </div>
   );

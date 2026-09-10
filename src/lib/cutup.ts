@@ -117,3 +117,9 @@ export function generatePieces(rawText: string): Piece[] {
   const strips = cutLinesIntoStrips(lines);
   return layoutPieces(strips);
 }
+
+/** Approximates reading order (top-to-bottom, right-to-left) for the pieces currently on the table. */
+export function readingOrderText(pieces: Piece[]): string {
+  const sorted = [...pieces].sort((a, b) => a.y - b.y || b.x - a.x);
+  return sorted.map((p) => p.text).join('\n');
+}
