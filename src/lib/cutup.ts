@@ -2,9 +2,23 @@ export interface Piece {
   id: string;
   text: string;
   x: number; // percent, 0-100, position within the table
-  y: number; // percent, 0-100
+  y: number; // percent, 0-100 of the table's *content* height (see ROW_HEIGHT_PX)
   rot: number; // degrees
 }
+
+export interface Board {
+  pieces: Piece[];
+  rows: number;
+}
+
+/** Pixel height of one scatter row. The table's content height is rows * this,
+ *  so piece y-percentages always resolve against real, generous vertical space
+ *  instead of being crammed into one fixed-height screen. */
+export const ROW_HEIGHT_PX = 96;
+
+/** Fixed at 2 so pieces get a genuinely wide cell on a phone screen; extra
+ *  pieces grow the table downward (scroll) instead of squeezing sideways. */
+const COLS = 2;
 
 const MIN_LINE_CHARS = 22;
 const MAX_LINE_CHARS = 40;
@@ -85,23 +99,24 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
-/** Scatters pieces messily across the table using a jittered grid, so strips overlap a little
- *  but stay mostly graspable rather than piling in one spot. */
-function layoutPieces(strips: string[]): Piece[] {
+/** Scatters pieces messily down a tall, narrow grid (2 columns, as many rows as needed)
+ *  so each piece keeps a generous cell no matter how much text came in - more text makes
+ *  the table taller (scrollable), not more crowded. */
+function layoutPieces(strips: string[]): Board {
   const shuffled = shuffle(strips);
   const count = shuffled.length;
-  const cols = Math.max(1, Math.ceil(Math.sqrt(count * 1.4)));
+  const cols = Math.min(COLS, Math.max(1, count));
   const rows = Math.max(1, Math.ceil(count / cols));
   const cellW = 100 / cols;
   const cellH = 100 / rows;
 
-  return shuffled.map((text, i) => {
+  const pieces = shuffled.map((text, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const jitterX = (Math.random() - 0.5) * cellW * 0.7;
     const jitterY = (Math.random() - 0.5) * cellH * 0.7;
-    const x = Math.min(94, Math.max(4, col * cellW + cellW / 2 + jitterX));
-    const y = Math.min(94, Math.max(4, row * cellH + cellH / 2 + jitterY));
+    const x = Math.min(96, Math.max(4, col * cellW + cellW / 2 + jitterX));
+    const y = Math.min(97, Math.max(3, row * cellH + cellH / 2 + jitterY));
     return {
       id: makePieceId(),
       text,
@@ -110,9 +125,11 @@ function layoutPieces(strips: string[]): Piece[] {
       rot: (Math.random() - 0.5) * 24,
     };
   });
+
+  return { pieces, rows };
 }
 
-export function generatePieces(rawText: string): Piece[] {
+export function generatePieces(rawText: string): Board {
   const lines = textToLines(rawText);
   const strips = cutLinesIntoStrips(lines);
   return layoutPieces(strips);

@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
-import { makePieceId, readingOrderText, splitWords, type Piece } from '../lib/cutup';
+import { ROW_HEIGHT_PX, makePieceId, readingOrderText, splitWords, type Piece } from '../lib/cutup';
 import { downloadBlob, downloadText, renderPiecesToPngBlob } from '../lib/exportImage';
 import { Strip } from './Strip';
 
 interface CutupBoardProps {
   initialPieces: Piece[];
+  rows: number;
   originalText: string;
   onNewText: () => void;
   onEditOriginal: () => void;
@@ -14,6 +15,7 @@ interface CutupBoardProps {
 
 const TAP_THRESHOLD = 8; // px of movement below which a pointer gesture counts as a tap, not a drag
 const MERGE_THRESHOLD = 22; // px gap below which a dropped piece glues to its neighbor
+const MIN_TABLE_HEIGHT = 480; // keeps a short scatter from looking like a sliver
 const BG_PRESETS = ['#3a2e26', '#1f3a2e', '#1f2a3a', '#3a1f2e', '#2a2a2a', '#3a3524'];
 const BG_STORAGE_KEY = 'poemix-bg-color';
 
@@ -38,6 +40,7 @@ function loadBgColor(): string {
 
 export function CutupBoard({
   initialPieces,
+  rows,
   originalText,
   onNewText,
   onEditOriginal,
@@ -53,7 +56,12 @@ export function CutupBoard({
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // this is the tall scrollable content div, not the viewport-sized clipper around it -
+  // piece x/y percentages resolve against it, and getBoundingClientRect() on it already
+  // accounts for however far the table is currently scrolled
   const tableRef = useRef<HTMLDivElement>(null);
+  const contentHeight = Math.max(rows * ROW_HEIGHT_PX, MIN_TABLE_HEIGHT);
+
   // only the pieces present at the initial scatter get the entrance "pop in" animation;
   // pieces created afterward by cutting/gluing should appear in place immediately, not
   // fade in from invisible (that read as the piece flashing away and back)
@@ -90,7 +98,7 @@ export function CutupBoard({
       const text = aFirst ? `${a.text} ${b.text}` : `${b.text} ${a.text}`;
 
       // keep the (now wider) merged piece from hanging off the table edge, where
-      // it would get clipped by the table's overflow:hidden
+      // it would get clipped
       const estWidthPx = sideBySide
         ? rectA.width + rectB.width + 16
         : Math.max(rectA.width, rectB.width);
@@ -105,8 +113,8 @@ export function CutupBoard({
       );
       const midY = clamp(
         ((centerAY + centerBY) / 2 - tableRect.top) / tableRect.height * 100,
-        6,
-        94,
+        3,
+        97,
       );
 
       const merged: Piece = { id: mergedId, text, x: midX, y: midY, rot: 0 };
@@ -140,7 +148,7 @@ export function CutupBoard({
       const dxPct = ((ev.clientX - startClientX) / tableRect.width) * 100;
       const dyPct = ((ev.clientY - startClientY) / tableRect.height) * 100;
       const nx = clamp(startX + dxPct, 2, 98);
-      const ny = clamp(startY + dyPct, 2, 98);
+      const ny = clamp(startY + dyPct, 1, 99);
       setTablePieces((prev) => prev.map((p) => (p.id === piece.id ? { ...p, x: nx, y: ny } : p)));
     };
 
@@ -239,6 +247,8 @@ export function CutupBoard({
     setShowSaveMenu(false);
   };
 
+  const cuttingPiece = cuttingId ? tablePieces.find((p) => p.id === cuttingId) : undefined;
+
   return (
     <div className="screen board-screen" style={{ '--wood-light': bgColor } as CSSProperties}>
       <header className="board-header">
@@ -325,51 +335,63 @@ export function CutupBoard({
         </div>
       </header>
 
-      <div
-        className="table"
-        ref={tableRef}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            if (cuttingId) setCuttingId(null);
-            closePopovers();
-          }
-        }}
-      >
-        {tablePieces.length === 0 && (
-          <p className="table-hint">כל השורות נגזרו... לחצי &quot;גזירה מחדש&quot; כדי לפזר שוב</p>
-        )}
-        {tablePieces.map((piece, i) => {
-          const isCutting = cuttingId === piece.id;
-          const classes = [
-            initialIds.has(piece.id) ? 'strip--enter' : '',
-            gluedId === piece.id ? 'strip--glued' : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
-          return (
-            <Strip
-              key={piece.id}
-              pieceId={piece.id}
-              text={piece.text}
-              dragging={draggingId === piece.id}
-              cutting={isCutting}
-              words={isCutting ? splitWords(piece.text) : undefined}
-              onCut={(splitIndex) => cutTablePiece(piece.id, splitIndex)}
-              onCancelCut={() => setCuttingId(null)}
-              onPointerDown={isCutting ? undefined : startTableDrag(piece)}
-              className={classes}
-              style={{
-                position: 'absolute',
-                left: isCutting ? '50%' : `${piece.x}%`,
-                top: isCutting ? '46%' : `${piece.y}%`,
-                transform: `translate(-50%, -50%) rotate(${isCutting ? 0 : piece.rot}deg)`,
-                zIndex: draggingId === piece.id || isCutting || gluedId === piece.id ? 50 : 1,
-                animationDelay: `${Math.min(i, 20) * 25}ms`,
-              }}
-            />
-          );
-        })}
+      <div className="table">
+        <div
+          className="table-content"
+          ref={tableRef}
+          style={{ height: `${contentHeight}px` }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closePopovers();
+          }}
+        >
+          {tablePieces.length === 0 && (
+            <p className="table-hint">כל השורות נגזרו... לחצי &quot;גזירה מחדש&quot; כדי לפזר שוב</p>
+          )}
+          {tablePieces.map((piece, i) => {
+            if (piece.id === cuttingId) return null; // shown in the fixed overlay below instead
+            const classes = [
+              initialIds.has(piece.id) ? 'strip--enter' : '',
+              gluedId === piece.id ? 'strip--glued' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            return (
+              <Strip
+                key={piece.id}
+                pieceId={piece.id}
+                text={piece.text}
+                dragging={draggingId === piece.id}
+                onPointerDown={startTableDrag(piece)}
+                className={classes}
+                style={{
+                  position: 'absolute',
+                  left: `${piece.x}%`,
+                  top: `${piece.y}%`,
+                  transform: `translate(-50%, -50%) rotate(${piece.rot}deg)`,
+                  zIndex: draggingId === piece.id || gluedId === piece.id ? 50 : 1,
+                  animationDelay: `${Math.min(i, 20) * 25}ms`,
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
+
+      {cuttingPiece && (
+        <div className="cut-overlay" onClick={() => setCuttingId(null)}>
+          <div onClick={(e) => e.stopPropagation()}>
+            <Strip
+              pieceId={cuttingPiece.id}
+              text={cuttingPiece.text}
+              cutting
+              words={splitWords(cuttingPiece.text)}
+              onCut={(splitIndex) => cutTablePiece(cuttingPiece.id, splitIndex)}
+              onCancelCut={() => setCuttingId(null)}
+              style={{ position: 'static', transform: 'none' }}
+            />
+          </div>
+        </div>
+      )}
 
       {showOriginal && (
         <div className="modal-overlay" onClick={() => setShowOriginal(false)}>
