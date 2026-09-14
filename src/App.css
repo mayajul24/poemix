@@ -594,11 +594,21 @@
   flex-direction: column;
   max-height: 60vh;
   overflow: hidden;
-  transition: max-height 0.25s ease;
+  transition: max-height 0.25s ease, box-shadow 0.15s ease, background 0.15s ease;
+  /* a piece being dragged toward this from the table has pointer capture, but touch
+     browsers still get to decide whether *this* element's own area allows native
+     gestures (scroll/pan) once the pointer arrives here mid-drag - without this,
+     that can win the tug-of-war and the drag stalls right at the boundary */
+  touch-action: none;
 }
 
 .poem-drawer--collapsed {
   max-height: 52px;
+}
+
+.poem-drawer--hover {
+  background: var(--paper);
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35), inset 0 0 0 3px var(--accent-light);
 }
 
 .poem-drawer-handle {

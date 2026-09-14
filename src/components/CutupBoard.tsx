@@ -57,6 +57,7 @@ export function CutupBoard({
   const [poemPieces, setPoemPieces] = useState<PoemItem[]>([]);
   const [poemOpen, setPoemOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [poemHover, setPoemHover] = useState(false);
   const [cuttingId, setCuttingId] = useState<string | null>(null);
   const [bgColor, setBgColorState] = useState<string>(loadBgColor);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -115,12 +116,16 @@ export function CutupBoard({
       const nx = clamp(startX + dxPct, 2, 98);
       const ny = clamp(startY + dyPct, 1, 99);
       setTablePieces((prev) => prev.map((p) => (p.id === piece.id ? { ...p, x: nx, y: ny } : p)));
+
+      const poemRect = poemDropRef.current?.getBoundingClientRect() ?? null;
+      setPoemHover(isPointInRect(ev.clientX, ev.clientY, poemRect));
     };
 
     const handleUp = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', handleMove);
       window.removeEventListener('pointerup', handleUp);
       setDraggingId(null);
+      setPoemHover(false);
 
       const moved = Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY);
       if (moved < TAP_THRESHOLD) {
@@ -420,7 +425,7 @@ export function CutupBoard({
       </div>
 
       <div
-        className={`poem-drawer ${poemOpen ? 'poem-drawer--open' : 'poem-drawer--collapsed'}`}
+        className={`poem-drawer ${poemOpen ? 'poem-drawer--open' : 'poem-drawer--collapsed'} ${poemHover ? 'poem-drawer--hover' : ''}`}
         ref={poemDropRef}
       >
         <button type="button" className="poem-drawer-handle" onClick={() => setPoemOpen((v) => !v)}>
