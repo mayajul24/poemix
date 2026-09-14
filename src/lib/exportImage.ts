@@ -54,7 +54,6 @@ export function renderPiecesToPngBlob(pieces: Piece[], opts: RenderOptions): Pro
 
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate((piece.rot * Math.PI) / 180);
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     roundRect(ctx, -boxW / 2 + 2 * scale, -boxH / 2 + 3 * scale, boxW, boxH, 4 * scale);

@@ -3,7 +3,6 @@ export interface Piece {
   text: string;
   x: number; // percent, 0-100, position within the table
   y: number; // percent, 0-100 of the table's *content* height (see ROW_HEIGHT_PX)
-  rot: number; // degrees
 }
 
 export interface Board {
@@ -117,13 +116,7 @@ function layoutPieces(strips: string[]): Board {
     const jitterY = (Math.random() - 0.5) * cellH * 0.7;
     const x = Math.min(96, Math.max(4, col * cellW + cellW / 2 + jitterX));
     const y = Math.min(97, Math.max(3, row * cellH + cellH / 2 + jitterY));
-    return {
-      id: makePieceId(),
-      text,
-      x,
-      y,
-      rot: (Math.random() - 0.5) * 24,
-    };
+    return { id: makePieceId(), text, x, y };
   });
 
   return { pieces, rows };

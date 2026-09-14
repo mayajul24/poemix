@@ -120,14 +120,12 @@ export function CutupBoard({
         text: words.slice(0, splitIndex).join(' '),
         x: clamp(piece.x - 3, 3, 97),
         y: clamp(piece.y - 2, 3, 97),
-        rot: (Math.random() - 0.5) * 24,
       };
       const pieceB: Piece = {
         id: makePieceId(),
         text: words.slice(splitIndex).join(' '),
         x: clamp(piece.x + 3, 3, 97),
         y: clamp(piece.y + 2, 3, 97),
-        rot: (Math.random() - 0.5) * 24,
       };
       const next = [...prev];
       next.splice(idx, 1, pieceA, pieceB);
@@ -283,7 +281,7 @@ export function CutupBoard({
                   position: 'absolute',
                   left: `${piece.x}%`,
                   top: `${piece.y}%`,
-                  transform: `translate(-50%, -50%) rotate(${piece.rot}deg)`,
+                  transform: 'translate(-50%, -50%)',
                   zIndex: draggingId === piece.id ? 50 : 1,
                   animationDelay: `${Math.min(i, 20) * 25}ms`,
                 }}
