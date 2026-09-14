@@ -268,7 +268,7 @@
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
   transition: filter 0.4s ease-out;
   white-space: normal;
-  cursor: var(--scissors-cursor);
+  cursor: grab;
   user-select: none;
   touch-action: none;
   max-width: min(60vw, 260px);
@@ -279,7 +279,7 @@
 }
 
 .strip--dragging {
-  cursor: var(--scissors-cursor);
+  cursor: grabbing;
   filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.55));
   transform-origin: center;
   scale: 1.05;
