@@ -30,6 +30,21 @@ function rectDistance(a: DOMRect, b: DOMRect): number {
   return Math.hypot(dx, dy);
 }
 
+/** true if A reads before B: side by side -> rightmost first (RTL); stacked -> higher first. */
+function isAFirst(rectA: DOMRect, rectB: DOMRect): boolean {
+  const dx = rectA.left + rectA.width / 2 - (rectB.left + rectB.width / 2);
+  const dy = rectA.top + rectA.height / 2 - (rectB.top + rectB.height / 2);
+  return Math.abs(dx) >= Math.abs(dy) ? dx > 0 : dy < 0;
+}
+
+interface PendingMerge {
+  idA: string;
+  idB: string;
+  rectA: DOMRect;
+  rectB: DOMRect;
+  text: string;
+}
+
 function loadBgColor(): string {
   try {
     return localStorage.getItem(BG_STORAGE_KEY) || BG_PRESETS[0];
@@ -50,6 +65,7 @@ export function CutupBoard({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [cuttingId, setCuttingId] = useState<string | null>(null);
   const [gluedId, setGluedId] = useState<string | null>(null);
+  const [pendingMerge, setPendingMerge] = useState<PendingMerge | null>(null);
   const [bgColor, setBgColorState] = useState<string>(loadBgColor);
   const [showOriginal, setShowOriginal] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -76,26 +92,20 @@ export function CutupBoard({
     }
   };
 
-  const mergePieces = (idA: string, idB: string, rectA: DOMRect, rectB: DOMRect) => {
+  const confirmMerge = () => {
+    if (!pendingMerge) return;
+    const { idA, idB, rectA, rectB, text } = pendingMerge;
     const mergedId = makePieceId();
+
     setTablePieces((prev) => {
-      const a = prev.find((p) => p.id === idA);
-      const b = prev.find((p) => p.id === idB);
       const tableRect = tableRef.current?.getBoundingClientRect();
-      if (!a || !b || !tableRect) return prev;
+      if (!tableRect) return prev;
 
       const centerAX = rectA.left + rectA.width / 2;
       const centerAY = rectA.top + rectA.height / 2;
       const centerBX = rectB.left + rectB.width / 2;
       const centerBY = rectB.top + rectB.height / 2;
-      const dx = centerAX - centerBX;
-      const dy = centerAY - centerBY;
-
-      // side by side -> reading right-to-left, rightmost piece comes first;
-      // stacked -> the higher piece comes first
-      const sideBySide = Math.abs(dx) >= Math.abs(dy);
-      const aFirst = sideBySide ? dx > 0 : dy < 0;
-      const text = aFirst ? `${a.text} ${b.text}` : `${b.text} ${a.text}`;
+      const sideBySide = Math.abs(centerAX - centerBX) >= Math.abs(centerAY - centerBY);
 
       // keep the (now wider) merged piece from hanging off the table edge, where
       // it would get clipped
@@ -123,7 +133,10 @@ export function CutupBoard({
 
     setGluedId(mergedId);
     setTimeout(() => setGluedId((cur) => (cur === mergedId ? null : cur)), 500);
+    setPendingMerge(null);
   };
+
+  const cancelMerge = () => setPendingMerge(null);
 
   const startTableDrag = (piece: Piece) => (e: ReactPointerEvent) => {
     const target = e.currentTarget as HTMLElement;
@@ -179,7 +192,10 @@ export function CutupBoard({
       }
 
       if (closest) {
-        mergePieces(piece.id, closest.id, draggedRect, closest.rect);
+        const otherText = tablePieces.find((p) => p.id === closest.id)?.text ?? '';
+        const aFirst = isAFirst(draggedRect, closest.rect);
+        const text = aFirst ? `${piece.text} ${otherText}` : `${otherText} ${piece.text}`;
+        setPendingMerge({ idA: piece.id, idB: closest.id, rectA: draggedRect, rectB: closest.rect, text });
       }
     };
 
@@ -389,6 +405,24 @@ export function CutupBoard({
               onCancelCut={() => setCuttingId(null)}
               style={{ position: 'static', transform: 'none' }}
             />
+          </div>
+        </div>
+      )}
+
+      {pendingMerge && (
+        <div className="modal-overlay" onClick={cancelMerge}>
+          <div className="modal-card merge-confirm" onClick={(e) => e.stopPropagation()}>
+            <p className="merge-preview" dir="auto">
+              {pendingMerge.text}
+            </p>
+            <div className="modal-actions merge-actions">
+              <button type="button" className="btn btn--ghost btn--small" onClick={cancelMerge}>
+                ביטול
+              </button>
+              <button type="button" className="btn btn--primary btn--small" onClick={confirmMerge}>
+                לחברי ✓
+              </button>
+            </div>
           </div>
         </div>
       )}
