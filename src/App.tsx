@@ -15,7 +15,10 @@ export default function App() {
   const [draftText, setDraftText] = useState('');
 
   const startCutting = (text: string) => {
-    setStage({ kind: 'cutting', text, lines: textToLines(text), board: generatePieces(text) });
+    // .table has 8px margin on each side; a vertical scrollbar (desktop) eats a
+    // little more, but this only has to be a decent estimate of the table's width
+    const availableWidth = Math.max(280, window.innerWidth - 16);
+    setStage({ kind: 'cutting', text, lines: textToLines(text), board: generatePieces(text, availableWidth) });
   };
 
   if (stage.kind === 'input') {

@@ -15,9 +15,18 @@ export interface Board {
  *  instead of being crammed into one fixed-height screen. */
 export const ROW_HEIGHT_PX = 96;
 
-/** Fixed at 2 so pieces get a genuinely wide cell on a phone screen; extra
- *  pieces grow the table downward (scroll) instead of squeezing sideways. */
-const COLS = 2;
+/** Target width of one column - column count is derived from the available table
+ *  width divided by this, so a phone gets ~2 narrow columns (tall, scrollable) while
+ *  a wide desktop window gets several (short, little to no scrolling) instead of
+ *  wasting all that spare horizontal room. */
+const TARGET_COL_WIDTH_PX = 190;
+const MIN_COLS = 2;
+const MAX_COLS = 8;
+
+function computeCols(availableWidthPx: number): number {
+  const ideal = Math.round(availableWidthPx / TARGET_COL_WIDTH_PX);
+  return Math.min(MAX_COLS, Math.max(MIN_COLS, ideal));
+}
 
 const MIN_LINE_CHARS = 22;
 const MAX_LINE_CHARS = 40;
@@ -98,13 +107,13 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
-/** Scatters pieces messily down a tall, narrow grid (2 columns, as many rows as needed)
- *  so each piece keeps a generous cell no matter how much text came in - more text makes
- *  the table taller (scrollable), not more crowded. */
-function layoutPieces(strips: string[]): Board {
+/** Scatters pieces messily down a grid sized to the available width (see computeCols)
+ *  so each piece keeps a generous cell no matter how much text came in - more text
+ *  makes the table taller (scrollable), not more crowded. */
+function layoutPieces(strips: string[], availableWidthPx: number): Board {
   const shuffled = shuffle(strips);
   const count = shuffled.length;
-  const cols = Math.min(COLS, Math.max(1, count));
+  const cols = Math.min(computeCols(availableWidthPx), Math.max(1, count));
   const rows = Math.max(1, Math.ceil(count / cols));
   const cellW = 100 / cols;
   const cellH = 100 / rows;
@@ -122,10 +131,10 @@ function layoutPieces(strips: string[]): Board {
   return { pieces, rows };
 }
 
-export function generatePieces(rawText: string): Board {
+export function generatePieces(rawText: string, availableWidthPx: number): Board {
   const lines = textToLines(rawText);
   const strips = cutLinesIntoStrips(lines);
-  return layoutPieces(strips);
+  return layoutPieces(strips, availableWidthPx);
 }
 
 /** Approximates reading order (top-to-bottom, right-to-left) for the pieces currently on the table. */
