@@ -245,15 +245,28 @@
     9 14, grab;
 }
 
+/* a torn-paper silhouette instead of a clean rectangle - depth stays modest and
+   inset from the edges so it never eats into the text padding */
+:root {
+  --torn-edge: polygon(
+    0% 0%, 12.5% 3.4%, 25% 0%, 37.5% 4.5%, 50% 0%, 62.5% 4.5%, 75% 0%, 87.5% 3.5%, 100% 0%,
+    95.6% 25%, 100% 50%, 94.5% 75%, 100% 100%,
+    87.5% 95.2%, 75% 100%, 62.5% 94.7%, 50% 100%, 37.5% 94.1%, 25% 100%, 12.5% 94.1%, 0% 100%,
+    5.9% 75%, 0% 50%, 5.7% 25%
+  );
+}
+
 .strip {
   position: absolute;
   background: var(--paper);
   color: var(--ink);
   font: 16px/1.4 Georgia, 'Times New Roman', serif;
-  padding: 8px 14px;
-  border-radius: 2px 8px 3px 9px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  transition: box-shadow 0.4s ease-out;
+  padding: 10px 17px;
+  clip-path: var(--torn-edge);
+  /* filter:drop-shadow (not box-shadow) so the shadow hugs the torn silhouette
+     instead of the invisible rectangular box behind it */
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  transition: filter 0.4s ease-out;
   white-space: normal;
   cursor: var(--scissors-cursor);
   user-select: none;
@@ -267,13 +280,13 @@
 
 .strip--dragging {
   cursor: var(--scissors-cursor);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.55));
   transform-origin: center;
   scale: 1.05;
 }
 
 .strip--glued {
-  box-shadow: 0 0 0 6px var(--accent-light), 0 2px 6px rgba(0, 0, 0, 0.4);
+  filter: drop-shadow(0 0 5px var(--accent-light)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
 /* fixed to the viewport (not the scrollable table) so cutting a piece always
@@ -295,6 +308,9 @@
   max-width: min(82vw, 380px);
   overflow: visible;
   text-overflow: unset;
+  clip-path: none;
+  filter: none;
+  border-radius: 8px;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
   outline: 2px dashed var(--accent-light);
   outline-offset: 3px;
@@ -310,6 +326,38 @@
 .cut-word-group {
   display: inline-flex;
   align-items: center;
+  transition: transform 0.24s ease-out;
+}
+
+/* the two halves visually pull apart from the tapped cut point for a beat before
+   the piece actually splits */
+.cut-word-group--pull-a {
+  transform: translateX(7px);
+}
+
+.cut-word-group--pull-b {
+  transform: translateX(-7px);
+}
+
+@keyframes snipFlash {
+  0% {
+    opacity: 0;
+    scale: 0.3;
+  }
+  40% {
+    opacity: 1;
+    scale: 1.3;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+.snip-flash {
+  display: inline-block;
+  font-size: 15px;
+  animation: snipFlash 0.24s ease-out both;
 }
 
 .cut-word {
@@ -343,6 +391,14 @@
 .cut-gap:active .cut-gap-line {
   width: 3px;
   background: var(--accent);
+}
+
+.cut-gap:disabled {
+  cursor: default;
+}
+
+.cut-gap:disabled .cut-gap-line {
+  opacity: 0.35;
 }
 
 .cut-cancel {
