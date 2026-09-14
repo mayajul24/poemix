@@ -285,10 +285,6 @@
   scale: 1.05;
 }
 
-.strip--glued {
-  filter: drop-shadow(0 0 5px var(--accent-light)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
-}
-
 /* fixed to the viewport (not the scrollable table) so cutting a piece always
    shows centered on screen, regardless of how far the table is scrolled */
 .cut-overlay {
@@ -367,38 +363,33 @@
 .cut-gap {
   border: none;
   background: transparent;
-  padding: 2px 6px;
+  padding: 2px 5px;
   margin: 0;
   cursor: var(--scissors-cursor);
   display: inline-flex;
-  align-items: stretch;
+  align-items: center;
   height: 1.5em;
 }
 
-.cut-gap-line {
-  width: 2px;
-  border-radius: 1px;
-  background: repeating-linear-gradient(
-    to bottom,
-    var(--accent) 0,
-    var(--accent) 3px,
-    transparent 3px,
-    transparent 6px
-  );
+.cut-gap-icon {
+  color: var(--accent);
+  opacity: 0.55;
+  transform: rotate(90deg);
+  transition: opacity 0.15s ease, scale 0.15s ease;
 }
 
-.cut-gap:hover .cut-gap-line,
-.cut-gap:active .cut-gap-line {
-  width: 3px;
-  background: var(--accent);
+.cut-gap:hover .cut-gap-icon,
+.cut-gap:active .cut-gap-icon {
+  opacity: 1;
+  scale: 1.25;
 }
 
 .cut-gap:disabled {
   cursor: default;
 }
 
-.cut-gap:disabled .cut-gap-line {
-  opacity: 0.35;
+.cut-gap:disabled .cut-gap-icon {
+  opacity: 0.25;
 }
 
 .cut-cancel {
@@ -481,28 +472,102 @@
   justify-content: flex-end;
 }
 
-.merge-confirm {
-  align-items: center;
-  gap: 14px;
-}
-
-.merge-preview {
-  background: var(--paper);
-  color: var(--ink);
-  font: 17px/1.5 Georgia, 'Times New Roman', serif;
-  padding: 14px 18px;
-  border-radius: 2px 8px 3px 9px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  margin: 0;
-  text-align: center;
-}
-
-.merge-actions {
-  justify-content: center;
-  gap: 10px;
-}
-
 .modal-actions .btn--ghost {
   color: var(--ink);
   border-color: var(--ink);
+}
+
+/* ---------- cutting transition ---------- */
+
+.cutting-transition {
+  position: fixed;
+  inset: 0;
+  background: var(--wood);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.cutting-page {
+  position: relative;
+  background: var(--paper-shade);
+  border-radius: 6px;
+  padding: 22px 20px;
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.cutting-line {
+  display: flex;
+  font: 16px/1.4 Georgia, 'Times New Roman', serif;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cutting-half {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+@keyframes pullApartA {
+  0%,
+  55% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(6px);
+  }
+}
+
+@keyframes pullApartB {
+  0%,
+  55% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-6px);
+  }
+}
+
+.cutting-half--a {
+  animation: pullApartA 0.38s ease-out both;
+}
+
+.cutting-half--b {
+  animation: pullApartB 0.38s ease-out both;
+}
+
+@keyframes bladeSweep {
+  0% {
+    top: -2%;
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  94% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+.cutting-blade {
+  position: absolute;
+  right: -6%;
+  left: -6%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent-light), var(--accent-light), transparent);
+  box-shadow: 0 0 10px 2px var(--accent-light);
+  animation: bladeSweep linear both;
 }

@@ -14,35 +14,12 @@ interface CutupBoardProps {
 }
 
 const TAP_THRESHOLD = 8; // px of movement below which a pointer gesture counts as a tap, not a drag
-const MERGE_THRESHOLD = 22; // px gap below which a dropped piece glues to its neighbor
 const MIN_TABLE_HEIGHT = 480; // keeps a short scatter from looking like a sliver
 const BG_PRESETS = ['#3a2e26', '#1f3a2e', '#1f2a3a', '#3a1f2e', '#2a2a2a', '#3a3524'];
 const BG_STORAGE_KEY = 'poemix-bg-color';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-/** 0 if the two rects touch or overlap, otherwise the gap between them. */
-function rectDistance(a: DOMRect, b: DOMRect): number {
-  const dx = Math.max(b.left - a.right, a.left - b.right, 0);
-  const dy = Math.max(b.top - a.bottom, a.top - b.bottom, 0);
-  return Math.hypot(dx, dy);
-}
-
-/** true if A reads before B: side by side -> rightmost first (RTL); stacked -> higher first. */
-function isAFirst(rectA: DOMRect, rectB: DOMRect): boolean {
-  const dx = rectA.left + rectA.width / 2 - (rectB.left + rectB.width / 2);
-  const dy = rectA.top + rectA.height / 2 - (rectB.top + rectB.height / 2);
-  return Math.abs(dx) >= Math.abs(dy) ? dx > 0 : dy < 0;
-}
-
-interface PendingMerge {
-  idA: string;
-  idB: string;
-  rectA: DOMRect;
-  rectB: DOMRect;
-  text: string;
 }
 
 function loadBgColor(): string {
@@ -64,8 +41,6 @@ export function CutupBoard({
   const [tablePieces, setTablePieces] = useState<Piece[]>(initialPieces);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [cuttingId, setCuttingId] = useState<string | null>(null);
-  const [gluedId, setGluedId] = useState<string | null>(null);
-  const [pendingMerge, setPendingMerge] = useState<PendingMerge | null>(null);
   const [bgColor, setBgColorState] = useState<string>(loadBgColor);
   const [showOriginal, setShowOriginal] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -79,8 +54,8 @@ export function CutupBoard({
   const contentHeight = Math.max(rows * ROW_HEIGHT_PX, MIN_TABLE_HEIGHT);
 
   // only the pieces present at the initial scatter get the entrance "pop in" animation;
-  // pieces created afterward by cutting/gluing should appear in place immediately, not
-  // fade in from invisible (that read as the piece flashing away and back)
+  // pieces created afterward by cutting should appear in place immediately, not fade
+  // in from invisible (that read as the piece flashing away and back)
   const [initialIds] = useState(() => new Set(initialPieces.map((p) => p.id)));
 
   const setBgColor = (color: string) => {
@@ -91,52 +66,6 @@ export function CutupBoard({
       // private mode / storage disabled - the color just won't persist
     }
   };
-
-  const confirmMerge = () => {
-    if (!pendingMerge) return;
-    const { idA, idB, rectA, rectB, text } = pendingMerge;
-    const mergedId = makePieceId();
-
-    setTablePieces((prev) => {
-      const tableRect = tableRef.current?.getBoundingClientRect();
-      if (!tableRect) return prev;
-
-      const centerAX = rectA.left + rectA.width / 2;
-      const centerAY = rectA.top + rectA.height / 2;
-      const centerBX = rectB.left + rectB.width / 2;
-      const centerBY = rectB.top + rectB.height / 2;
-      const sideBySide = Math.abs(centerAX - centerBX) >= Math.abs(centerAY - centerBY);
-
-      // keep the (now wider) merged piece from hanging off the table edge, where
-      // it would get clipped
-      const estWidthPx = sideBySide
-        ? rectA.width + rectB.width + 16
-        : Math.max(rectA.width, rectB.width);
-      const halfWidthPct = (estWidthPx / 2 / tableRect.width) * 100;
-      const minX = Math.min(48, 4 + halfWidthPct);
-      const maxX = Math.max(52, 96 - halfWidthPct);
-
-      const midX = clamp(
-        ((centerAX + centerBX) / 2 - tableRect.left) / tableRect.width * 100,
-        minX,
-        maxX,
-      );
-      const midY = clamp(
-        ((centerAY + centerBY) / 2 - tableRect.top) / tableRect.height * 100,
-        3,
-        97,
-      );
-
-      const merged: Piece = { id: mergedId, text, x: midX, y: midY, rot: 0 };
-      return [...prev.filter((p) => p.id !== idA && p.id !== idB), merged];
-    });
-
-    setGluedId(mergedId);
-    setTimeout(() => setGluedId((cur) => (cur === mergedId ? null : cur)), 500);
-    setPendingMerge(null);
-  };
-
-  const cancelMerge = () => setPendingMerge(null);
 
   const startTableDrag = (piece: Piece) => (e: ReactPointerEvent) => {
     const target = e.currentTarget as HTMLElement;
@@ -171,31 +100,8 @@ export function CutupBoard({
       setDraggingId(null);
 
       const moved = Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY);
-      if (moved < TAP_THRESHOLD) {
-        if (splitWords(piece.text).length > 1) setCuttingId(piece.id);
-        return;
-      }
-
-      if (!tableRef.current) return;
-      const draggedRect = target.getBoundingClientRect();
-      const others = Array.from(
-        tableRef.current.querySelectorAll<HTMLElement>('[data-piece-id]'),
-      ).filter((el) => el.dataset.pieceId !== piece.id);
-
-      let closest: { id: string; rect: DOMRect; dist: number } | null = null;
-      for (const el of others) {
-        const rect = el.getBoundingClientRect();
-        const dist = rectDistance(draggedRect, rect);
-        if (dist <= MERGE_THRESHOLD && (!closest || dist < closest.dist)) {
-          closest = { id: el.dataset.pieceId as string, rect, dist };
-        }
-      }
-
-      if (closest) {
-        const otherText = tablePieces.find((p) => p.id === closest.id)?.text ?? '';
-        const aFirst = isAFirst(draggedRect, closest.rect);
-        const text = aFirst ? `${piece.text} ${otherText}` : `${otherText} ${piece.text}`;
-        setPendingMerge({ idA: piece.id, idB: closest.id, rectA: draggedRect, rectB: closest.rect, text });
+      if (moved < TAP_THRESHOLD && splitWords(piece.text).length > 1) {
+        setCuttingId(piece.id);
       }
     };
 
@@ -365,12 +271,6 @@ export function CutupBoard({
           )}
           {tablePieces.map((piece, i) => {
             if (piece.id === cuttingId) return null; // shown in the fixed overlay below instead
-            const classes = [
-              initialIds.has(piece.id) ? 'strip--enter' : '',
-              gluedId === piece.id ? 'strip--glued' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
             return (
               <Strip
                 key={piece.id}
@@ -378,13 +278,13 @@ export function CutupBoard({
                 text={piece.text}
                 dragging={draggingId === piece.id}
                 onPointerDown={startTableDrag(piece)}
-                className={classes}
+                className={initialIds.has(piece.id) ? 'strip--enter' : ''}
                 style={{
                   position: 'absolute',
                   left: `${piece.x}%`,
                   top: `${piece.y}%`,
                   transform: `translate(-50%, -50%) rotate(${piece.rot}deg)`,
-                  zIndex: draggingId === piece.id || gluedId === piece.id ? 50 : 1,
+                  zIndex: draggingId === piece.id ? 50 : 1,
                   animationDelay: `${Math.min(i, 20) * 25}ms`,
                 }}
               />
@@ -405,24 +305,6 @@ export function CutupBoard({
               onCancelCut={() => setCuttingId(null)}
               style={{ position: 'static', transform: 'none' }}
             />
-          </div>
-        </div>
-      )}
-
-      {pendingMerge && (
-        <div className="modal-overlay" onClick={cancelMerge}>
-          <div className="modal-card merge-confirm" onClick={(e) => e.stopPropagation()}>
-            <p className="merge-preview" dir="auto">
-              {pendingMerge.text}
-            </p>
-            <div className="modal-actions merge-actions">
-              <button type="button" className="btn btn--ghost btn--small" onClick={cancelMerge}>
-                ביטול
-              </button>
-              <button type="button" className="btn btn--primary btn--small" onClick={confirmMerge}>
-                לחבר ✓
-              </button>
-            </div>
           </div>
         </div>
       )}

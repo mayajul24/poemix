@@ -16,6 +16,28 @@ interface StripProps {
 
 const SNIP_DURATION_MS = 240;
 
+function ScissorsIcon() {
+  return (
+    <svg
+      className="cut-gap-icon"
+      width="13"
+      height="13"
+      viewBox="0 0 28 28"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="7" cy="7" r="3.2" />
+      <circle cx="7" cy="21" r="3.2" />
+      <line x1="23" y1="4" x2="9" y2="18" />
+      <line x1="9" y1="10" x2="23" y2="24" />
+    </svg>
+  );
+}
+
 export function Strip({
   text,
   style,
@@ -61,7 +83,7 @@ export function Strip({
                         ✂️
                       </span>
                     ) : (
-                      <span className="cut-gap-line" />
+                      <ScissorsIcon />
                     )}
                   </button>
                 )}

@@ -1,41 +1,51 @@
 import { useState } from 'react';
 import { InputScreen } from './components/InputScreen';
 import { CutupBoard } from './components/CutupBoard';
-import { generatePieces, type Board } from './lib/cutup';
+import { CuttingTransition } from './components/CuttingTransition';
+import { generatePieces, textToLines, type Board } from './lib/cutup';
 import './App.css';
 
+type Stage =
+  | { kind: 'input' }
+  | { kind: 'cutting'; text: string; lines: string[]; board: Board }
+  | { kind: 'board'; text: string; board: Board };
+
 export default function App() {
-  const [rawText, setRawText] = useState<string | null>(null);
-  const [board, setBoard] = useState<Board>({ pieces: [], rows: 0 });
+  const [stage, setStage] = useState<Stage>({ kind: 'input' });
   const [draftText, setDraftText] = useState('');
 
-  if (rawText === null) {
+  const startCutting = (text: string) => {
+    setStage({ kind: 'cutting', text, lines: textToLines(text), board: generatePieces(text) });
+  };
+
+  if (stage.kind === 'input') {
+    return <InputScreen initialText={draftText} onSubmit={startCutting} />;
+  }
+
+  if (stage.kind === 'cutting') {
     return (
-      <InputScreen
-        initialText={draftText}
-        onSubmit={(text) => {
-          setRawText(text);
-          setBoard(generatePieces(text));
-        }}
+      <CuttingTransition
+        lines={stage.lines}
+        onDone={() => setStage({ kind: 'board', text: stage.text, board: stage.board })}
       />
     );
   }
 
   return (
     <CutupBoard
-      key={board.pieces.map((p) => p.id).join('|')}
-      initialPieces={board.pieces}
-      rows={board.rows}
-      originalText={rawText}
+      key={stage.board.pieces.map((p) => p.id).join('|')}
+      initialPieces={stage.board.pieces}
+      rows={stage.board.rows}
+      originalText={stage.text}
       onNewText={() => {
         setDraftText('');
-        setRawText(null);
+        setStage({ kind: 'input' });
       }}
       onEditOriginal={() => {
-        setDraftText(rawText);
-        setRawText(null);
+        setDraftText(stage.text);
+        setStage({ kind: 'input' });
       }}
-      onReshuffle={() => setBoard(generatePieces(rawText))}
+      onReshuffle={() => startCutting(stage.text)}
     />
   );
 }

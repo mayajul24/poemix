@@ -61,7 +61,7 @@ function wrapLine(line: string): string[] {
 
 /** Turns raw free text into "physical" lines, respecting the author's own line breaks
  *  and only auto-wrapping runs of text that are too long to have fit on one written line. */
-function textToLines(rawText: string): string[] {
+export function textToLines(rawText: string): string[] {
   const rawLines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
   const lines: string[] = [];
   for (const rawLine of rawLines) {
