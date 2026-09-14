@@ -239,6 +239,9 @@
   user-select: none;
   touch-action: none;
   max-width: min(60vw, 260px);
+}
+
+.strip--enter {
   animation: stripPop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
 }
 

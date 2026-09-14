@@ -54,6 +54,10 @@ export function CutupBoard({
   const [copied, setCopied] = useState(false);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  // only the pieces present at the initial scatter get the entrance "pop in" animation;
+  // pieces created afterward by cutting/gluing should appear in place immediately, not
+  // fade in from invisible (that read as the piece flashing away and back)
+  const [initialIds] = useState(() => new Set(initialPieces.map((p) => p.id)));
 
   const setBgColor = (color: string) => {
     setBgColorState(color);
@@ -336,6 +340,12 @@ export function CutupBoard({
         )}
         {tablePieces.map((piece, i) => {
           const isCutting = cuttingId === piece.id;
+          const classes = [
+            initialIds.has(piece.id) ? 'strip--enter' : '',
+            gluedId === piece.id ? 'strip--glued' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
           return (
             <Strip
               key={piece.id}
@@ -347,7 +357,7 @@ export function CutupBoard({
               onCut={(splitIndex) => cutTablePiece(piece.id, splitIndex)}
               onCancelCut={() => setCuttingId(null)}
               onPointerDown={isCutting ? undefined : startTableDrag(piece)}
-              className={gluedId === piece.id ? 'strip--glued' : ''}
+              className={classes}
               style={{
                 position: 'absolute',
                 left: isCutting ? '50%' : `${piece.x}%`,
