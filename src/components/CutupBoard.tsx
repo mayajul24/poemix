@@ -420,7 +420,7 @@ export function CutupBoard({
                 ביטול
               </button>
               <button type="button" className="btn btn--primary btn--small" onClick={confirmMerge}>
-                לחברי ✓
+                לחבר ✓
               </button>
             </div>
           </div>
