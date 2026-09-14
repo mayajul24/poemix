@@ -207,6 +207,9 @@
   overflow-x: hidden;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
+  /* the poem drawer's collapsed handle sits fixed at the bottom, on top of the table -
+     this keeps the last row of pieces from ending up hidden underneath it */
+  padding-bottom: 60px;
 }
 
 /* the tall scrollable canvas the pieces actually position against - grows with
@@ -570,4 +573,97 @@
   background: linear-gradient(90deg, transparent, var(--accent-light), var(--accent-light), transparent);
   box-shadow: 0 0 10px 2px var(--accent-light);
   animation: bladeSweep linear both;
+}
+
+/* ---------- poem drawer ---------- */
+
+/* fixed overlay, not a flex sibling of .table - collapsed it's just a slim handle
+   that doesn't cost the table any layout space; open it grows over the bottom of
+   the table without permanently shrinking it */
+.poem-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: var(--paper-shade);
+  color: var(--ink);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+}
+
+.poem-drawer--collapsed {
+  max-height: 52px;
+}
+
+.poem-drawer-handle {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 18px max(14px, env(safe-area-inset-bottom));
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.poem-drawer--open .poem-drawer-handle {
+  padding-bottom: 8px;
+}
+
+.poem-drawer-chevron {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+.poem-drawer-list {
+  overflow-y: auto;
+  padding: 0 14px max(14px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.poem-drawer-hint {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 6px 4px 16px;
+  margin: 0;
+}
+
+.poem-drawer-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.poem-drawer-strip {
+  max-width: none;
+  white-space: normal;
+  flex: 1;
+}
+
+.poem-drawer-remove {
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1;
+  width: 32px;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.poem-drawer-remove:hover {
+  opacity: 1;
 }

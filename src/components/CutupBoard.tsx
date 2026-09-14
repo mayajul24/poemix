@@ -1,8 +1,18 @@
 import { useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { ROW_HEIGHT_PX, makePieceId, readingOrderText, splitWords, type Piece } from '../lib/cutup';
-import { downloadBlob, downloadText, renderPiecesToPngBlob } from '../lib/exportImage';
+import {
+  downloadBlob,
+  downloadText,
+  renderPiecesToPngBlob,
+  renderPoemListToPngBlob,
+} from '../lib/exportImage';
 import { Strip } from './Strip';
+
+interface PoemItem {
+  id: string;
+  text: string;
+}
 
 interface CutupBoardProps {
   initialPieces: Piece[];
@@ -22,6 +32,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function isPointInRect(x: number, y: number, rect: DOMRect | null): boolean {
+  if (!rect) return false;
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
 function loadBgColor(): string {
   try {
     return localStorage.getItem(BG_STORAGE_KEY) || BG_PRESETS[0];
@@ -39,6 +54,8 @@ export function CutupBoard({
   onReshuffle,
 }: CutupBoardProps) {
   const [tablePieces, setTablePieces] = useState<Piece[]>(initialPieces);
+  const [poemPieces, setPoemPieces] = useState<PoemItem[]>([]);
+  const [poemOpen, setPoemOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [cuttingId, setCuttingId] = useState<string | null>(null);
   const [bgColor, setBgColorState] = useState<string>(loadBgColor);
@@ -52,6 +69,12 @@ export function CutupBoard({
   // accounts for however far the table is currently scrolled
   const tableRef = useRef<HTMLDivElement>(null);
   const contentHeight = Math.max(rows * ROW_HEIGHT_PX, MIN_TABLE_HEIGHT);
+
+  // covers the poem drawer whether collapsed (just the handle) or open (the full
+  // sheet) - used both as the drag-and-drop target and, when open, to measure sibling
+  // rows for reordering
+  const poemDropRef = useRef<HTMLDivElement>(null);
+  const poemListRef = useRef<HTMLDivElement>(null);
 
   // only the pieces present at the initial scatter get the entrance "pop in" animation;
   // pieces created afterward by cutting should appear in place immediately, not fade
@@ -100,8 +123,15 @@ export function CutupBoard({
       setDraggingId(null);
 
       const moved = Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY);
-      if (moved < TAP_THRESHOLD && splitWords(piece.text).length > 1) {
-        setCuttingId(piece.id);
+      if (moved < TAP_THRESHOLD) {
+        if (splitWords(piece.text).length > 1) setCuttingId(piece.id);
+        return;
+      }
+
+      const poemRect = poemDropRef.current?.getBoundingClientRect() ?? null;
+      if (isPointInRect(ev.clientX, ev.clientY, poemRect)) {
+        setTablePieces((prev) => prev.filter((p) => p.id !== piece.id));
+        setPoemPieces((prev) => [...prev, { id: piece.id, text: piece.text }]);
       }
     };
 
@@ -109,7 +139,77 @@ export function CutupBoard({
     window.addEventListener('pointerup', handleUp);
   };
 
-  const cutTablePiece = (id: string, splitIndex: number) => {
+  const startPoemDrag = (item: PoemItem) => (e: ReactPointerEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    try {
+      target.setPointerCapture(e.pointerId);
+    } catch {
+      // capture is a nice-to-have; the window-level listeners below still drive the drag
+    }
+
+    if (cuttingId && cuttingId !== item.id) setCuttingId(null);
+
+    const poemRect = poemDropRef.current?.getBoundingClientRect() ?? null;
+    const tableRect = tableRef.current?.getBoundingClientRect() ?? null;
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    setDraggingId(item.id);
+
+    const handleMove = (ev: PointerEvent) => {
+      const listEl = poemListRef.current;
+      if (!listEl) return;
+      const rowEls = Array.from(listEl.querySelectorAll<HTMLElement>('[data-poem-id]'));
+      const others = rowEls.filter((r) => r.dataset.poemId !== item.id);
+      let idx = 0;
+      for (const r of others) {
+        const rect = r.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        if (ev.clientY > mid) idx++;
+      }
+      setPoemPieces((prev) => {
+        const dragged = prev.find((p) => p.id === item.id);
+        if (!dragged) return prev;
+        const rest = prev.filter((p) => p.id !== item.id);
+        rest.splice(idx, 0, dragged);
+        return rest;
+      });
+    };
+
+    const handleUp = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      setDraggingId(null);
+
+      const moved = Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY);
+      if (moved < TAP_THRESHOLD) {
+        if (splitWords(item.text).length > 1) setCuttingId(item.id);
+        return;
+      }
+
+      const stillInPoem = isPointInRect(ev.clientX, ev.clientY, poemRect);
+      if (!stillInPoem && tableRect) {
+        setPoemPieces((prev) => prev.filter((p) => p.id !== item.id));
+        const nx = clamp(((ev.clientX - tableRect.left) / tableRect.width) * 100, 2, 98);
+        const ny = clamp(((ev.clientY - tableRect.top) / tableRect.height) * 100, 2, 98);
+        setTablePieces((prev) => [...prev, { id: item.id, text: item.text, x: nx, y: ny }]);
+      }
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+  };
+
+  const removeFromPoem = (id: string) => {
+    const item = poemPieces.find((p) => p.id === id);
+    if (!item) return;
+    setPoemPieces((prev) => prev.filter((p) => p.id !== id));
+    setTablePieces((prev) => [
+      ...prev,
+      { id: item.id, text: item.text, x: 50 + (Math.random() - 0.5) * 20, y: 6 },
+    ]);
+  };
+
+  const cutPiece = (id: string, splitIndex: number) => {
     setTablePieces((prev) => {
       const idx = prev.findIndex((p) => p.id === id);
       if (idx === -1) return prev;
@@ -131,11 +231,25 @@ export function CutupBoard({
       next.splice(idx, 1, pieceA, pieceB);
       return next;
     });
+    setPoemPieces((prev) => {
+      const idx = prev.findIndex((p) => p.id === id);
+      if (idx === -1) return prev;
+      const words = splitWords(prev[idx].text);
+      const next = [...prev];
+      next.splice(
+        idx,
+        1,
+        { id: makePieceId(), text: words.slice(0, splitIndex).join(' ') },
+        { id: makePieceId(), text: words.slice(splitIndex).join(' ') },
+      );
+      return next;
+    });
     setCuttingId(null);
   };
 
   const handleCopyText = async () => {
-    const text = readingOrderText(tablePieces);
+    const text =
+      poemPieces.length > 0 ? poemPieces.map((p) => p.text).join('\n') : readingOrderText(tablePieces);
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -146,19 +260,30 @@ export function CutupBoard({
   };
 
   const handleDownloadText = () => {
-    downloadText(readingOrderText(tablePieces), 'שיר.txt');
+    const text =
+      poemPieces.length > 0 ? poemPieces.map((p) => p.text).join('\n') : readingOrderText(tablePieces);
+    downloadText(text, 'שיר.txt');
     setShowSaveMenu(false);
   };
 
   const handleDownloadImage = async () => {
-    if (!tableRef.current) return;
-    const rect = tableRef.current.getBoundingClientRect();
-    const blob = await renderPiecesToPngBlob(tablePieces, {
-      bgColor,
-      width: rect.width,
-      height: rect.height,
-    });
-    downloadBlob(blob, 'שיר.png');
+    if (poemPieces.length > 0) {
+      const width = tableRef.current?.getBoundingClientRect().width ?? 360;
+      const blob = await renderPoemListToPngBlob(
+        poemPieces.map((p) => p.text),
+        { bgColor, width },
+      );
+      downloadBlob(blob, 'שיר.png');
+    } else {
+      if (!tableRef.current) return;
+      const rect = tableRef.current.getBoundingClientRect();
+      const blob = await renderPiecesToPngBlob(tablePieces, {
+        bgColor,
+        width: rect.width,
+        height: rect.height,
+      });
+      downloadBlob(blob, 'שיר.png');
+    }
     setShowSaveMenu(false);
   };
 
@@ -167,7 +292,10 @@ export function CutupBoard({
     setShowSaveMenu(false);
   };
 
-  const cuttingPiece = cuttingId ? tablePieces.find((p) => p.id === cuttingId) : undefined;
+  const cuttingPiece =
+    (cuttingId && tablePieces.find((p) => p.id === cuttingId)) ||
+    (cuttingId && poemPieces.find((p) => p.id === cuttingId)) ||
+    undefined;
 
   return (
     <div className="screen board-screen" style={{ '--wood-light': bgColor } as CSSProperties}>
@@ -291,6 +419,48 @@ export function CutupBoard({
         </div>
       </div>
 
+      <div
+        className={`poem-drawer ${poemOpen ? 'poem-drawer--open' : 'poem-drawer--collapsed'}`}
+        ref={poemDropRef}
+      >
+        <button type="button" className="poem-drawer-handle" onClick={() => setPoemOpen((v) => !v)}>
+          <span>השיר שלי{poemPieces.length > 0 ? ` (${poemPieces.length})` : ''}</span>
+          <span className="poem-drawer-chevron" aria-hidden="true">
+            {poemOpen ? '▾' : '▴'}
+          </span>
+        </button>
+        {poemOpen && (
+          <div className="poem-drawer-list" ref={poemListRef}>
+            {poemPieces.length === 0 && (
+              <p className="poem-drawer-hint">גררי שורות מהשולחן לכאן כדי לבנות את השיר</p>
+            )}
+            {poemPieces.map((item) => {
+              if (item.id === cuttingId) return null; // shown in the fixed overlay below instead
+              return (
+                <div key={item.id} data-poem-id={item.id} className="poem-drawer-row">
+                  <Strip
+                    pieceId={item.id}
+                    text={item.text}
+                    dragging={draggingId === item.id}
+                    onPointerDown={startPoemDrag(item)}
+                    className="poem-drawer-strip"
+                    style={{ position: 'static', transform: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    className="poem-drawer-remove"
+                    aria-label="הסירי שורה"
+                    onClick={() => removeFromPoem(item.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {cuttingPiece && (
         <div className="cut-overlay" onClick={() => setCuttingId(null)}>
           <div onClick={(e) => e.stopPropagation()}>
@@ -299,7 +469,7 @@ export function CutupBoard({
               text={cuttingPiece.text}
               cutting
               words={splitWords(cuttingPiece.text)}
-              onCut={(splitIndex) => cutTablePiece(cuttingPiece.id, splitIndex)}
+              onCut={(splitIndex) => cutPiece(cuttingPiece.id, splitIndex)}
               onCancelCut={() => setCuttingId(null)}
               style={{ position: 'static', transform: 'none' }}
             />
