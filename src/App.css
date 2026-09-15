@@ -661,6 +661,10 @@
   max-width: none;
   white-space: normal;
   flex: 1;
+  /* clean rectangle, not torn paper - these lines are the assembled poem, not raw
+     scraps still on the table */
+  clip-path: none;
+  border-radius: 6px;
 }
 
 .poem-drawer-remove {
