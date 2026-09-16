@@ -74,6 +74,11 @@ export function CutupBoard({
   // piece x/y percentages resolve against it, and getBoundingClientRect() on it already
   // accounts for however far the table is currently scrolled
   const tableRef = useRef<HTMLDivElement>(null);
+  // the viewport-sized clipper itself - the wheel listener needs this one, not
+  // tableRef: zoomed out, table-content shrinks well below it, and a listener on
+  // the shrinking element stops receiving events once the cursor is over the now-
+  // empty space around it (that's the "zoom gets stuck" bug)
+  const tableViewportRef = useRef<HTMLDivElement>(null);
   const contentHeight = Math.max(rows * ROW_HEIGHT_PX, MIN_TABLE_HEIGHT);
 
   // covers the poem drawer whether collapsed (just the handle) or open (the full
@@ -99,8 +104,12 @@ export function CutupBoard({
   // plain mouse wheel zooms the table (no modifier key needed) - scrolling to pan
   // is still there via touch drag or the scrollbar itself. React's onWheel is
   // passive, so preventDefault() there is silently ignored - needs a real DOM listener.
+  // Attached to the viewport clipper, not the content div it resizes: zoomed out,
+  // the content shrinks well below the viewport, and a listener on the shrinking
+  // element stops receiving events once the cursor is over the empty space that
+  // opens up around it - that was the "zoom gets stuck when zooming out" bug.
   useEffect(() => {
-    const el = tableRef.current;
+    const el = tableViewportRef.current;
     if (!el) return;
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -425,7 +434,7 @@ export function CutupBoard({
         </div>
       </header>
 
-      <div className="table">
+      <div className="table" ref={tableViewportRef}>
         <div
           className="table-content"
           ref={tableRef}

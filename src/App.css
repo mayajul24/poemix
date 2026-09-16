@@ -213,10 +213,12 @@
 }
 
 /* the tall scrollable canvas the pieces actually position against - grows with
-   how much text came in, instead of squeezing everything into one screen */
+   how much text came in, instead of squeezing everything into one screen.
+   No transition on transform here: zoom updates arrive in a rapid burst while
+   scrolling, and retriggering a transition on every single one caused more
+   jank than it smoothed out. */
 .table-content {
   position: relative;
-  transition: transform 0.08s ease-out;
 }
 
 .table-hint {
