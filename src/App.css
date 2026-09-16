@@ -291,8 +291,14 @@
   scale: 1.05;
 }
 
+/* drop-shadow (unlike box-shadow) has no spread value, so a crisp colored
+   ring isn't possible directly - stacking the same soft glow twice thickens
+   it into something that reads as an outline while still hugging the torn
+   clip-path silhouette (a box-shadow would just show the invisible rectangle
+   behind it instead) */
 .strip--selected {
-  filter: drop-shadow(0 0 0 3px var(--accent)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 3px var(--accent))
+    drop-shadow(0 0 3px var(--accent)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
 }
 
 /* rubber-band selection rectangle, drawn from a mouse-drag over the empty table
