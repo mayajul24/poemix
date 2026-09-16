@@ -204,7 +204,7 @@
     var(--wood-light);
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.35);
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto; /* zoomed-in content can exceed the viewport width */
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   /* the poem drawer's collapsed handle sits fixed at the bottom, on top of the table -
@@ -216,6 +216,7 @@
    how much text came in, instead of squeezing everything into one screen */
 .table-content {
   position: relative;
+  transition: transform 0.08s ease-out;
 }
 
 .table-hint {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { ROW_HEIGHT_PX, makePieceId, readingOrderText, splitWords, type Piece } from '../lib/cutup';
 import {
@@ -25,6 +25,10 @@ interface CutupBoardProps {
 
 const TAP_THRESHOLD = 8; // px of movement below which a pointer gesture counts as a tap, not a drag
 const MIN_TABLE_HEIGHT = 480; // keeps a short scatter from looking like a sliver
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2.5;
+const ZOOM_STEP = 0.15;
+const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 const BG_PRESETS = ['#3a2e26', '#1f3a2e', '#1f2a3a', '#3a1f2e', '#2a2a2a', '#3a3524'];
 const BG_STORAGE_KEY = 'poemix-bg-color';
 
@@ -64,6 +68,7 @@ export function CutupBoard({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   // this is the tall scrollable content div, not the viewport-sized clipper around it -
   // piece x/y percentages resolve against it, and getBoundingClientRect() on it already
@@ -90,6 +95,21 @@ export function CutupBoard({
       // private mode / storage disabled - the color just won't persist
     }
   };
+
+  // Ctrl/Cmd+wheel (also how browsers report trackpad pinch) zooms the table;
+  // plain wheel keeps scrolling it normally. React's onWheel is passive, so
+  // preventDefault() there is silently ignored - needs a real DOM listener.
+  useEffect(() => {
+    const el = tableRef.current;
+    if (!el) return;
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setZoom((z) => clamp(z - e.deltaY * WHEEL_ZOOM_SENSITIVITY, MIN_ZOOM, MAX_ZOOM));
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const startTableDrag = (piece: Piece) => (e: ReactPointerEvent) => {
     const target = e.currentTarget as HTMLElement;
@@ -322,6 +342,24 @@ export function CutupBoard({
         >
           📄
         </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--icon"
+          aria-label="הגדלה"
+          disabled={zoom >= MAX_ZOOM}
+          onClick={() => setZoom((z) => clamp(z + ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--icon"
+          aria-label="הקטנה"
+          disabled={zoom <= MIN_ZOOM}
+          onClick={() => setZoom((z) => clamp(z - ZOOM_STEP, MIN_ZOOM, MAX_ZOOM))}
+        >
+          −
+        </button>
         <div className="popover-anchor">
           <button
             type="button"
@@ -392,7 +430,11 @@ export function CutupBoard({
         <div
           className="table-content"
           ref={tableRef}
-          style={{ height: `${contentHeight}px` }}
+          style={{
+            height: `${contentHeight}px`,
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top center',
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget) closePopovers();
           }}
