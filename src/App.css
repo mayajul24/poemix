@@ -291,6 +291,21 @@
   scale: 1.05;
 }
 
+.strip--selected {
+  filter: drop-shadow(0 0 0 3px var(--accent)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+/* rubber-band selection rectangle, drawn from a mouse-drag over the empty table
+   background - fixed to the viewport since it's built straight from client coords */
+.marquee-select {
+  position: fixed;
+  border: 1.5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 3px;
+  z-index: 60;
+  pointer-events: none;
+}
+
 /* fixed to the viewport (not the scrollable table) so cutting a piece always
    shows centered on screen, regardless of how far the table is scrolled */
 .cut-overlay {

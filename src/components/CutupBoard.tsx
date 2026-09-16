@@ -14,6 +14,13 @@ interface PoemItem {
   text: string;
 }
 
+interface Marquee {
+  startX: number;
+  startY: number;
+  curX: number;
+  curY: number;
+}
+
 interface CutupBoardProps {
   initialPieces: Piece[];
   rows: number;
@@ -69,6 +76,8 @@ export function CutupBoard({
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [marquee, setMarquee] = useState<Marquee | null>(null);
 
   // this is the tall scrollable content div, not the viewport-sized clipper around it -
   // piece x/y percentages resolve against it, and getBoundingClientRect() on it already
@@ -122,6 +131,57 @@ export function CutupBoard({
     return () => el.removeEventListener('wheel', handleWheel);
   }, []);
 
+  // Mouse-only rubber-band selection, like clicking-and-dragging on empty desktop
+  // space to select several icons at once. Touch keeps its normal single-piece
+  // drag and table panning, so this only wires up for mouse pointers starting on
+  // the empty table background (not bubbled up from a piece's own pointerdown).
+  const startMarqueeSelect = (e: ReactPointerEvent) => {
+    if (e.pointerType !== 'mouse') return;
+    if (e.target !== e.currentTarget) return;
+
+    const target = e.currentTarget as HTMLElement;
+    try {
+      target.setPointerCapture(e.pointerId);
+    } catch {
+      // capture is a nice-to-have; the window-level listeners below still drive the drag
+    }
+
+    closePopovers();
+    setSelectedIds(new Set());
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    setMarquee({ startX: startClientX, startY: startClientY, curX: startClientX, curY: startClientY });
+
+    const handleMove = (ev: PointerEvent) => {
+      setMarquee({ startX: startClientX, startY: startClientY, curX: ev.clientX, curY: ev.clientY });
+    };
+
+    const handleUp = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+
+      const moved = Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY);
+      if (moved >= TAP_THRESHOLD) {
+        const left = Math.min(startClientX, ev.clientX);
+        const right = Math.max(startClientX, ev.clientX);
+        const top = Math.min(startClientY, ev.clientY);
+        const bottom = Math.max(startClientY, ev.clientY);
+        const stripEls = tableRef.current?.querySelectorAll<HTMLElement>('[data-piece-id]') ?? [];
+        const hits = new Set<string>();
+        stripEls.forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          const overlaps = rect.left < right && rect.right > left && rect.top < bottom && rect.bottom > top;
+          if (overlaps && el.dataset.pieceId) hits.add(el.dataset.pieceId);
+        });
+        setSelectedIds(hits);
+      }
+      setMarquee(null);
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+  };
+
   const startTableDrag = (piece: Piece) => (e: ReactPointerEvent) => {
     const target = e.currentTarget as HTMLElement;
     try {
@@ -135,18 +195,36 @@ export function CutupBoard({
     const tableRect = tableRef.current?.getBoundingClientRect() ?? null;
     if (!tableRect) return;
 
+    // Dragging a piece that's part of a multi-selection moves the whole group
+    // together, preserving each piece's relative offset. Grabbing a piece outside
+    // the current selection drops the selection and drags just that one piece.
+    const isGroupDrag = selectedIds.has(piece.id) && selectedIds.size > 1;
+    if (!isGroupDrag && selectedIds.size > 0) setSelectedIds(new Set());
+
+    const groupIds = isGroupDrag ? selectedIds : new Set([piece.id]);
+    const startPositions = new Map<string, { x: number; y: number }>();
+    tablePieces.forEach((p) => {
+      if (groupIds.has(p.id)) startPositions.set(p.id, { x: p.x, y: p.y });
+    });
+
     const startClientX = e.clientX;
     const startClientY = e.clientY;
-    const startX = piece.x;
-    const startY = piece.y;
     setDraggingId(piece.id);
 
     const handleMove = (ev: PointerEvent) => {
       const dxPct = ((ev.clientX - startClientX) / tableRect.width) * 100;
       const dyPct = ((ev.clientY - startClientY) / tableRect.height) * 100;
-      const nx = clamp(startX + dxPct, 2, 98);
-      const ny = clamp(startY + dyPct, 1, 99);
-      setTablePieces((prev) => prev.map((p) => (p.id === piece.id ? { ...p, x: nx, y: ny } : p)));
+      setTablePieces((prev) =>
+        prev.map((p) => {
+          const start = startPositions.get(p.id);
+          if (!start) return p;
+          return {
+            ...p,
+            x: clamp(start.x + dxPct, 2, 98),
+            y: clamp(start.y + dyPct, 1, 99),
+          };
+        }),
+      );
 
       const poemRect = poemDropRef.current?.getBoundingClientRect() ?? null;
       setPoemHover(isPointInRect(ev.clientX, ev.clientY, poemRect));
@@ -160,14 +238,18 @@ export function CutupBoard({
 
       const moved = Math.hypot(ev.clientX - startClientX, ev.clientY - startClientY);
       if (moved < TAP_THRESHOLD) {
-        if (splitWords(piece.text).length > 1) setCuttingId(piece.id);
+        if (!isGroupDrag && splitWords(piece.text).length > 1) setCuttingId(piece.id);
         return;
       }
 
       const poemRect = poemDropRef.current?.getBoundingClientRect() ?? null;
       if (isPointInRect(ev.clientX, ev.clientY, poemRect)) {
-        setTablePieces((prev) => prev.filter((p) => p.id !== piece.id));
-        setPoemPieces((prev) => [...prev, { id: piece.id, text: piece.text }]);
+        const dropped = tablePieces
+          .filter((p) => groupIds.has(p.id))
+          .sort((a, b) => a.y - b.y || b.x - a.x);
+        setTablePieces((prev) => prev.filter((p) => !groupIds.has(p.id)));
+        setPoemPieces((prev) => [...prev, ...dropped.map((p) => ({ id: p.id, text: p.text }))]);
+        setSelectedIds(new Set());
       }
     };
 
@@ -449,6 +531,7 @@ export function CutupBoard({
           onClick={(e) => {
             if (e.target === e.currentTarget) closePopovers();
           }}
+          onPointerDown={startMarqueeSelect}
         >
           {tablePieces.length === 0 && (
             <p className="table-hint">כל השורות נגזרו... לחצי &quot;גזירה מחדש&quot; כדי לפזר שוב</p>
@@ -462,7 +545,7 @@ export function CutupBoard({
                 text={piece.text}
                 dragging={draggingId === piece.id}
                 onPointerDown={startTableDrag(piece)}
-                className={initialIds.has(piece.id) ? 'strip--enter' : ''}
+                className={`${initialIds.has(piece.id) ? 'strip--enter' : ''} ${selectedIds.has(piece.id) ? 'strip--selected' : ''}`}
                 style={{
                   position: 'absolute',
                   left: `${piece.x}%`,
@@ -476,6 +559,18 @@ export function CutupBoard({
           })}
         </div>
       </div>
+
+      {marquee && (
+        <div
+          className="marquee-select"
+          style={{
+            left: `${Math.min(marquee.startX, marquee.curX)}px`,
+            top: `${Math.min(marquee.startY, marquee.curY)}px`,
+            width: `${Math.abs(marquee.curX - marquee.startX)}px`,
+            height: `${Math.abs(marquee.curY - marquee.startY)}px`,
+          }}
+        />
+      )}
 
       <div
         className={`poem-drawer ${poemOpen ? 'poem-drawer--open' : 'poem-drawer--collapsed'} ${poemHover ? 'poem-drawer--hover' : ''}`}
