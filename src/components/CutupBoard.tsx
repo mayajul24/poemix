@@ -101,17 +101,20 @@ export function CutupBoard({
     }
   };
 
-  // plain mouse wheel zooms the table (no modifier key needed) - scrolling to pan
-  // is still there via touch drag or the scrollbar itself. React's onWheel is
-  // passive, so preventDefault() there is silently ignored - needs a real DOM listener.
-  // Attached to the viewport clipper, not the content div it resizes: zoomed out,
-  // the content shrinks well below the viewport, and a listener on the shrinking
-  // element stops receiving events once the cursor is over the empty space that
-  // opens up around it - that was the "zoom gets stuck when zooming out" bug.
+  // Ctrl/Cmd+wheel (also how browsers report trackpad pinch) zooms the table;
+  // plain wheel keeps scrolling it normally - a bare wheel-zooms binding stole
+  // normal mouse-wheel scrolling entirely, which turned out to be worse than the
+  // extra keypress. React's onWheel is passive, so preventDefault() there is
+  // silently ignored - needs a real DOM listener. Attached to the viewport
+  // clipper, not the content div it resizes: zoomed out, the content shrinks
+  // well below the viewport, and a listener on the shrinking element stops
+  // receiving events once the cursor is over the empty space that opens up
+  // around it - that was the "zoom gets stuck when zooming out" bug.
   useEffect(() => {
     const el = tableViewportRef.current;
     if (!el) return;
     const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       setZoom((z) => clamp(z - e.deltaY * WHEEL_ZOOM_SENSITIVITY, MIN_ZOOM, MAX_ZOOM));
     };
