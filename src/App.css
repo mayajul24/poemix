@@ -291,14 +291,12 @@
   scale: 1.05;
 }
 
-/* drop-shadow (unlike box-shadow) has no spread value, so a crisp colored
-   ring isn't possible directly - stacking the same soft glow twice thickens
-   it into something that reads as an outline while still hugging the torn
-   clip-path silhouette (a box-shadow would just show the invisible rectangle
-   behind it instead) */
+/* An outset ring (box-shadow or filter:drop-shadow) either gets clipped away
+   by clip-path or silently fails to paint at all on some renderers - an
+   inset shadow stays within the clipped, visible area of the torn silhouette
+   so it's reliably visible as a colored ring just inside the paper's edge */
 .strip--selected {
-  filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 3px var(--accent))
-    drop-shadow(0 0 3px var(--accent)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  box-shadow: inset 0 0 0 3px var(--accent);
 }
 
 /* rubber-band selection rectangle, drawn from a mouse-drag over the empty table
