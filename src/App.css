@@ -188,10 +188,24 @@
   background: rgba(0, 0, 0, 0.08);
 }
 
-.table {
+/* the work area and the trash panel side by side, split evenly - in RTL the
+   first child (the table) lands on the right, matching how the header buttons
+   and everything else in this app already reads */
+.board-main {
   flex: 1;
-  min-height: 0; /* otherwise a flex child won't shrink below its content and never scrolls */
+  min-height: 0;
+  display: flex;
+  gap: 8px;
   margin: 0 8px 8px;
+}
+
+.table {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0; /* otherwise a flex child won't shrink below its content and never scrolls */
+  /* strips inside size themselves off this panel's own width (see .strip's cqw
+     max-width) rather than the full viewport, now that the panel is only half of it */
+  container-type: inline-size;
   border-radius: 14px;
   background:
     repeating-linear-gradient(
@@ -207,9 +221,6 @@
   overflow-x: auto; /* zoomed-in content can exceed the viewport width */
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  /* the poem drawer's collapsed handle sits fixed at the bottom, on top of the table -
-     this keeps the last row of pieces from ending up hidden underneath it */
-  padding-bottom: 60px;
 }
 
 /* the tall scrollable canvas the pieces actually position against - grows with
@@ -277,7 +288,10 @@
   cursor: grab;
   user-select: none;
   touch-action: none;
-  max-width: min(60vw, 260px);
+  /* cqw (not vw) so this sizes off the strip's actual panel - the table and trash
+     panel are each only half the window wide now, so vw would let a strip overflow
+     its own half on a narrow phone */
+  max-width: min(80cqw, 220px);
 }
 
 .strip--enter {
@@ -597,26 +611,29 @@
   animation: bladeSweep linear both;
 }
 
-/* ---------- poem drawer ---------- */
+/* ---------- trash panel ---------- */
 
-/* fixed overlay, not a flex sibling of .table - collapsed it's just a slim handle
-   that doesn't cost the table any layout space; open it grows over the bottom of
-   the table without permanently shrinking it */
-.poem-drawer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 40;
-  background: var(--paper-shade);
-  color: var(--ink);
-  border-radius: 16px 16px 0 0;
-  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35);
+/* the work area's other half - a flex sibling of .table, not an overlay, so the
+   split is permanent and doesn't cost either side layout space on open/close */
+.trash-panel {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  max-height: 60vh;
-  overflow: hidden;
-  transition: max-height 0.25s ease, box-shadow 0.15s ease, background 0.15s ease;
+  border-radius: 14px;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(0, 0, 0, 0.18) 0px,
+      rgba(0, 0, 0, 0.18) 2px,
+      transparent 2px,
+      transparent 16px
+    ),
+    #24201c;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.45);
+  transition: box-shadow 0.15s ease;
   /* a piece being dragged toward this from the table has pointer capture, but touch
      browsers still get to decide whether *this* element's own area allows native
      gestures (scroll/pan) once the pointer arrives here mid-drag - without this,
@@ -624,83 +641,59 @@
   touch-action: none;
 }
 
-.poem-drawer--collapsed {
-  max-height: 52px;
+.trash-panel--hover {
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.45), inset 0 0 0 3px var(--accent-light);
 }
 
-.poem-drawer--hover {
-  background: var(--paper);
-  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35), inset 0 0 0 3px var(--accent-light);
+.trash-panel-header {
+  flex-shrink: 0;
+  padding: 12px 14px 6px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--paper);
+  opacity: 0.8;
 }
 
-.poem-drawer-handle {
-  all: unset;
-  box-sizing: border-box;
+.trash-panel-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 10px max(10px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: center;
+  gap: 8px;
+}
+
+.trash-hint {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 20px 10px;
+  margin: 0;
+  width: 100%;
+}
+
+.trash-tile {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 14px 18px max(14px, env(safe-area-inset-bottom));
-  cursor: pointer;
-  flex-shrink: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ink);
+  gap: 2px;
 }
 
-.poem-drawer--open .poem-drawer-handle {
-  padding-bottom: 8px;
-}
-
-.poem-drawer-chevron {
-  font-size: 13px;
-  opacity: 0.6;
-}
-
-.poem-drawer-list {
-  overflow-y: auto;
-  padding: 0 14px max(14px, env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.poem-drawer-hint {
-  color: var(--muted);
-  font-size: 14px;
-  text-align: center;
-  padding: 6px 4px 16px;
-  margin: 0;
-}
-
-.poem-drawer-row {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-}
-
-.poem-drawer-strip {
-  max-width: none;
-  white-space: normal;
-  flex: 1;
-  /* clean rectangle, not torn paper - these lines are the assembled poem, not raw
-     scraps still on the table */
-  clip-path: none;
-  border-radius: 6px;
-}
-
-.poem-drawer-remove {
+.trash-return {
   border: none;
   background: transparent;
-  color: var(--ink);
-  font-size: 20px;
+  color: var(--paper);
+  font-size: 16px;
   line-height: 1;
-  width: 32px;
   cursor: pointer;
   opacity: 0.55;
+  padding: 4px;
 }
 
-.poem-drawer-remove:hover {
+.trash-return:hover {
   opacity: 1;
 }
 

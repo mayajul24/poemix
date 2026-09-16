@@ -74,64 +74,6 @@ export function renderPiecesToPngBlob(pieces: Piece[], opts: RenderOptions): Pro
   });
 }
 
-/** For the poem drawer's ordered list (no x/y - just stacks each line centered,
- *  top to bottom) rather than the scattered-table layout above. */
-export function renderPoemListToPngBlob(
-  texts: string[],
-  opts: { bgColor: string; width: number },
-): Promise<Blob> {
-  const scale = 2;
-  const width = opts.width * scale;
-  const paper = '#f6ecd9';
-  const ink = '#2b2118';
-  const padX = 14 * scale;
-  const fontSize = 16 * scale;
-  const rowGap = 10 * scale;
-  const rowHeight = fontSize * 1.7 + rowGap;
-  const height = Math.max(rowHeight, texts.length * rowHeight) + rowGap;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return Promise.reject(new Error('canvas unavailable'));
-
-  ctx.fillStyle = opts.bgColor;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.font = `${fontSize}px Georgia, "Times New Roman", serif`;
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-
-  texts.forEach((text, i) => {
-    const cx = width / 2;
-    const cy = rowGap + i * rowHeight + rowHeight / 2;
-    const textWidth = Math.min(ctx.measureText(text).width, width - padX * 4);
-    const boxW = textWidth + padX * 2;
-    const boxH = fontSize * 1.7;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    roundRect(ctx, -boxW / 2 + 2 * scale, -boxH / 2 + 3 * scale, boxW, boxH, 4 * scale);
-    ctx.fill();
-
-    ctx.fillStyle = paper;
-    roundRect(ctx, -boxW / 2, -boxH / 2, boxW, boxH, 4 * scale);
-    ctx.fill();
-
-    ctx.fillStyle = ink;
-    ctx.fillText(text, 0, 1 * scale);
-
-    ctx.restore();
-  });
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('export failed'))), 'image/png');
-  });
-}
-
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -25,9 +25,10 @@ export default function App() {
   }, []);
 
   const startCutting = (text: string) => {
-    // .table has 8px margin on each side; a vertical scrollbar (desktop) eats a
-    // little more, but this only has to be a decent estimate of the table's width
-    const availableWidth = Math.max(280, window.innerWidth - 16);
+    // the table is one of two side-by-side halves (the other being the trash
+    // panel), so it only gets roughly half the window width, minus the margins
+    // and gap between them - this only has to be a decent estimate
+    const availableWidth = Math.max(280, window.innerWidth / 2 - 24);
     setStage({ kind: 'cutting', text, lines: textToLines(text), board: generatePieces(text, availableWidth) });
   };
 
